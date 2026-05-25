@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(dir \"c:\\\\Users\\\\kimnhaty\\\\プライスカード\\\\release\" /b)",
+      "Bash(git init *)",
+      "Bash(git branch *)",
+      "Bash(git remote *)",
+      "Bash(git rm *)",
+      "Bash(Remove-Item -Recurse -Force .git)"
+    ]
+  }
+}

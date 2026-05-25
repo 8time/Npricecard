@@ -1,0 +1,10 @@
+{
+  "name": "レトロPOPプライスカード",
+  "short_name": "値札POP",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f1df",
+  "theme_color": "#f7f1df",
+  "lang": "ja",
+  "icons": []
+}

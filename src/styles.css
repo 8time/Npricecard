@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color: #2f241d;
+  background:
+    radial-gradient(circle at top left, rgba(255, 214, 102, 0.35), transparent 28%),
+    linear-gradient(180deg, #fbf3df 0%, #f4ead2 100%);
+  font-family: "BIZ UDPGothic", "Yu Gothic", sans-serif;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
