@@ -70,6 +70,7 @@ type Action =
   | { type: 'groupInstances'; instanceIds: string[] }
   | { type: 'ungroupInstances'; groupId: string }
   | { type: 'setLayoutGap'; xMm: number; yMm: number }
+  | { type: 'batchUpdateInstances'; updates: Array<{ id: string; x: number; y: number }> }
   | { type: 'undo' }
   | { type: 'redo' }
   | { type: 'setPriceFlag'; flag: string; value?: any };
@@ -522,6 +523,19 @@ const baseReducer = (state: State, action: Action): State => {
           ),
         },
       };
+    case 'batchUpdateInstances': {
+      const updateMap = new Map(action.updates.map((u) => [u.id, u]));
+      return {
+        ...state,
+        document: {
+          ...state.document,
+          instances: state.document.instances.map((i) => {
+            const u = updateMap.get(i.id);
+            return u ? { ...i, x: u.x, y: u.y } : i;
+          }),
+        },
+      };
+    }
     case 'updateInstanceCropMarks':
       return {
         ...state,

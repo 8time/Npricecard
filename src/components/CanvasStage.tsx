@@ -7,7 +7,7 @@ import {
   PRINT_MARGIN_PX,
   WORKSPACE_PADDING,
 } from '../lib/canvasWorkspace';
-import { drawCropMarks, drawCropMarksFromInstances } from '../lib/cropMarks';
+import { drawCropMarks, drawCropMarksFromInstances, drawGroupCropMarks } from '../lib/cropMarks';
 import type { PaperSizeId, CardSizeId } from '../lib/canvasWorkspace';
 import { drawCardObjects } from '../lib/drawUtils';
 import { DEFAULT_LAYER_ORDER, getDefaultLayout, getTemplateById } from '../templates';
@@ -444,6 +444,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
               for (const grp of instanceGroups) {
                 let gMinX = Infinity, gMinY = Infinity, gMaxX = -Infinity, gMaxY = -Infinity;
+                const grpCardBounds: { left: number; top: number; right: number; bottom: number }[] = [];
                 for (const id of grp.instanceIds) {
                   const obj = allCanvasObjs.find((o) => o.data?.instanceId === id);
                   if (!obj) continue;
@@ -452,9 +453,14 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   gMinY = Math.min(gMinY, r.top);
                   gMaxX = Math.max(gMaxX, r.left + r.width);
                   gMaxY = Math.max(gMaxY, r.top + r.height);
+                  grpCardBounds.push({ left: r.left, top: r.top, right: r.left + r.width, bottom: r.top + r.height });
                 }
                 if (isFinite(gMinX)) {
-                  drawCropMarks(canvas, gMinX, gMinY, 1, 1, gMaxX - gMinX, gMaxY - gMinY, 0, 0);
+                  drawGroupCropMarks(
+                    canvas,
+                    { minX: gMinX, minY: gMinY, maxX: gMaxX, maxY: gMaxY },
+                    grpCardBounds,
+                  );
                 }
               }
 

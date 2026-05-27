@@ -6,6 +6,41 @@ type InstancePos = { x: number; y: number; angle: number };
 const BASE_LEN = Math.round(3 * PX_PER_MM);
 const BASE_OFFSET = Math.round(1 * PX_PER_MM);
 const BASE_BAR = Math.round(1.5 * PX_PER_MM);
+const CLUSTER_TOLERANCE = 3;
+// カード辺座標のマージに使う許容誤差（浮動小数点ズレ + getBoundingRect の微誤差を吸収）
+const EDGE_CLUSTER_TOLERANCE = 8;
+
+// 近い座標値を同一グループとみなすクラスタリング（最初の値を代表値として採用）
+const cluster = (vals: number[]): number[] => {
+  const sorted = [...vals].sort((a, b) => a - b);
+  const result: number[] = [];
+  for (const v of sorted) {
+    if (!result.length || v - result[result.length - 1] > CLUSTER_TOLERANCE) result.push(v);
+  }
+  return result;
+};
+
+// 許容誤差内の値を1グループとして平均値で統合するクラスタリング
+// 隣接カードの辺座標（浮動小数点誤差あり）を確実に1本に統合するために使用
+const clusterMean = (vals: number[], tolerance: number): number[] => {
+  const sorted = [...vals].sort((a, b) => a - b);
+  if (sorted.length === 0) return [];
+  const result: number[] = [];
+  let sum = sorted[0];
+  let count = 1;
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] - sorted[i - 1] <= tolerance) {
+      sum += sorted[i];
+      count++;
+    } else {
+      result.push(sum / count);
+      sum = sorted[i];
+      count = 1;
+    }
+  }
+  result.push(sum / count);
+  return result;
+};
 
 /**
  * 全体トンボを描画する。
@@ -72,6 +107,69 @@ export const drawCropMarks = (
 };
 
 /**
+ * グループ化されたカード群に対してトンボを描画する。
+ * 外周4コーナーの L マークに加え、内側カード境界の中間トンボ（1本線）を描画する。
+ *
+ * 中間トンボはグループのバウンディングボックスの外側にのみ描画し、
+ * 印刷エリア内には一切線を引かない。
+ *
+ * groupBounds: グループ全体のバウンディングボックス（ワールド座標）
+ * cardBounds:  グループ内各カードの個別バウンディングボックス（ワールド座標）
+ */
+export const drawGroupCropMarks = (
+  canvas: StaticCanvas,
+  groupBounds: { minX: number; minY: number; maxX: number; maxY: number },
+  cardBounds: Array<{ left: number; top: number; right: number; bottom: number }>,
+  scale = 1,
+) => {
+  const { minX, minY, maxX, maxY } = groupBounds;
+
+  // 外周4コーナーの L マーク
+  drawCropMarks(canvas, minX, minY, 1, 1, maxX - minX, maxY - minY, 0, 0, scale);
+
+  if (cardBounds.length < 2) return;
+
+  const len = Math.round(BASE_LEN * scale);
+  const offset = Math.round(BASE_OFFSET * scale);
+  const style = { stroke: '#000000', strokeWidth: 0.75 * scale, selectable: false, evented: false };
+
+  const addLine = (x1: number, y1: number, x2: number, y2: number) => {
+    canvas.add(new Line([x1, y1, x2, y2], style));
+  };
+
+  // 各カードの左端・右端を収集し、EDGE_CLUSTER_TOLERANCE で統合して内側境界を抽出
+  // clusterMean を使うことで隣接カードの辺の浮動小数点誤差（数px程度）を確実に1値にまとめる
+  const allX = cardBounds.flatMap((b) => [b.left, b.right]);
+  const interiorX = clusterMean(allX, EDGE_CLUSTER_TOLERANCE).filter(
+    (x) => x > minX + EDGE_CLUSTER_TOLERANCE && x < maxX - EDGE_CLUSTER_TOLERANCE,
+  );
+
+  // 各カードの上端・下端を収集し、同様に統合して内側境界を抽出
+  const allY = cardBounds.flatMap((b) => [b.top, b.bottom]);
+  const interiorY = clusterMean(allY, EDGE_CLUSTER_TOLERANCE).filter(
+    (y) => y > minY + EDGE_CLUSTER_TOLERANCE && y < maxY - EDGE_CLUSTER_TOLERANCE,
+  );
+
+  // 縦カット線（内側 X）→ グループ上端・下端の外側に短い縦の直線1本ずつ
+  // 線はグループ外側にのみ向かって引く（内側には絶対に入らない）
+  for (const cutX of interiorX) {
+    // 上側: minY から offset 離れた外側を起点に、さらに上（len）へ
+    addLine(cutX, minY - offset, cutX, minY - offset - len);
+    // 下側: maxY から offset 離れた外側を起点に、さらに下（len）へ
+    addLine(cutX, maxY + offset, cutX, maxY + offset + len);
+  }
+
+  // 横カット線（内側 Y）→ グループ左端・右端の外側に短い横の直線1本ずつ
+  // 線はグループ外側にのみ向かって引く（内側には絶対に入らない）
+  for (const cutY of interiorY) {
+    // 左側: minX から offset 離れた外側を起点に、さらに左（len）へ
+    addLine(minX - offset, cutY, minX - offset - len, cutY);
+    // 右側: maxX から offset 離れた外側を起点に、さらに右（len）へ
+    addLine(maxX + offset, cutY, maxX + offset + len, cutY);
+  }
+};
+
+/**
  * グループ全体のバウンディングボックスを囲む1組のトンボを描画する。
  * グループ化された複数インスタンスを1つのまとまりとして扱う場合に使用。
  */
@@ -97,7 +195,7 @@ export const drawCropMarksForGroup = (
   const maxX = Math.max(...bounds.map((b) => b.right));
   const maxY = Math.max(...bounds.map((b) => b.bottom));
 
-  drawCropMarks(canvas, minX, minY, 1, 1, maxX - minX, maxY - minY, 0, 0, scale);
+  drawGroupCropMarks(canvas, { minX, minY, maxX, maxY }, bounds, scale);
 };
 
 /**
@@ -129,17 +227,6 @@ export const drawCropMarksFromInstances = (
     w: b.right - b.left,
     h: b.bottom - b.top,
   });
-
-  // 近い座標値をひとつのグループとして扱うクラスタリング
-  const TOLERANCE = 3;
-  const cluster = (vals: number[]) => {
-    const sorted = [...vals].sort((a, b) => a - b);
-    const result: number[] = [];
-    for (const v of sorted) {
-      if (!result.length || v - result[result.length - 1] > TOLERANCE) result.push(v);
-    }
-    return result;
-  };
 
   const uniqueX = cluster(bounds.map((b) => b.left));
   const uniqueY = cluster(bounds.map((b) => b.top));

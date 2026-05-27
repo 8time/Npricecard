@@ -36,15 +36,16 @@ export const TemplateSidebar = ({
           className="group text-center"
         >
           <div
-            className={`mx-auto grid h-[92px] w-[142px] place-items-center overflow-hidden rounded-md border bg-white cursor-grab active:cursor-grabbing transition ${
+            className={`mx-auto grid w-full place-items-center overflow-hidden rounded-md border bg-white cursor-grab active:cursor-grabbing transition ${
               activeTemplateId === template.id
                 ? 'border-[#328eaa] shadow-[0_0_0_2px_rgba(50,142,170,0.18)]'
                 : 'border-[#cfd8df] group-hover:border-[#328eaa]'
             }`}
+            style={{ aspectRatio: '10/7' }}
           >
             <div className="h-full w-full bg-white" />
           </div>
-          <div className="mt-1 text-sm font-medium text-[#111827]">{template.name}</div>
+          <div className="mt-2 text-base font-medium text-[#111827]">{template.name}</div>
         </button>
       ))}
     </div>
@@ -96,15 +97,18 @@ export const TemplateSidebar = ({
                 onClick={() => onLoadSaved(item)}
                 className="w-full text-center"
               >
-                <div className="mx-auto grid h-[92px] w-[142px] place-items-center overflow-hidden rounded-md border border-[#cfd8df] bg-[#f8fafc] shadow-sm cursor-grab active:cursor-grabbing transition group-hover:border-[#328eaa] group-hover:shadow-md">
+                <div
+                  className="grid w-full place-items-center overflow-hidden rounded-md border border-[#cfd8df] bg-[#f8fafc] shadow-sm cursor-grab active:cursor-grabbing transition group-hover:border-[#328eaa] group-hover:shadow-md"
+                  style={{ aspectRatio: '10/7' }}
+                >
                   {item.thumbnail ? (
                     <img src={item.thumbnail} alt={item.name} className="h-full w-full object-contain pointer-events-none" />
                   ) : (
                     <div className="text-[10px] text-[#94a3b8]">No Image</div>
                   )}
                 </div>
-                <div className="mt-1.5 px-1">
-                  <div className="truncate text-[11px] font-bold text-[#111827]">{item.name}</div>
+                <div className="mt-1.5">
+                  <div className="truncate text-sm font-bold text-[#111827]">{item.name}</div>
                 </div>
               </button>
               <button

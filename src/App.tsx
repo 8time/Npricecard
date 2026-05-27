@@ -186,7 +186,7 @@ const App = () => {
 
     // 固定レイアウト幅: 左ナビ56 + 左パネル208 + 右パネル320
     // 固定レイアウト高: ヘッダー56 + キャンバスツールバー48 + ステータスバー32
-    const availableWidth = window.innerWidth - 56 - 288 - 320 - 32;
+    const availableWidth = window.innerWidth - 96 - 384 - 384 - 32;
     const availableHeight = window.innerHeight - 56 - 48 - 32 - 32;
 
     const fitZoom = Math.min(availableWidth / canvasWidth, availableHeight / canvasHeight);
@@ -759,19 +759,35 @@ const App = () => {
             />
           </div>
         );
-      case 'align':
+      case 'align': {
+        const { cardPxWidth: aw, cardPxHeight: ah } = getCardOrigin(
+          state.document.paperSizeId,
+          state.document.cardSizeId,
+          state.document.customWidthMm,
+          state.document.customHeightMm,
+        );
         return (
           <div className="p-3">
-            <AlignmentTools canvas={canvasRef.current} />
+            <AlignmentTools
+              instances={state.document.instances}
+              selectedInstanceIds={selectedInstanceIds}
+              cardPxWidth={aw}
+              cardPxHeight={ah}
+              layoutMode={layoutMode}
+              onUpdateInstances={(updates) =>
+                dispatch({ type: 'batchUpdateInstances', updates })
+              }
+            />
           </div>
         );
+      }
       default:
         return null;
     }
   };
 
   return (
-    <div className="h-screen min-w-[1264px] overflow-hidden bg-[#eef2f5] text-[#111827]" style={{ fontFamily: "'Inter', 'Noto Sans JP', sans-serif" }}>
+    <div className="h-screen min-w-[1380px] overflow-hidden bg-[#eef2f5] text-[#111827]" style={{ fontFamily: "'Inter', 'Noto Sans JP', sans-serif" }}>
       {/* ヘッダー */}
       <header className="flex h-14 items-center justify-between border-b border-[#2a3a4f] bg-[#0f1724] px-4 text-white">
         <div className="flex items-center gap-3">
@@ -839,27 +855,27 @@ const App = () => {
 
       <main className="flex h-[calc(100vh-56px)] overflow-hidden">
         {/* 左アイコンナビ */}
-        <nav className="flex w-14 shrink-0 flex-col border-r border-[#d9e0e6] bg-white pt-2">
+        <nav className="flex w-24 shrink-0 flex-col border-r border-[#d9e0e6] bg-white pt-2">
           {SIDE_TOOLS.map((tool) => (
             <button
               key={tool.id}
               type="button"
               title={tool.label}
               onClick={() => setActiveSideTool(tool.id)}
-              className={`flex h-12 w-full flex-col items-center justify-center gap-0.5 border-l-2 text-lg transition ${
+              className={`flex h-[72px] w-full flex-col items-center justify-center gap-1.5 border-l-2 transition ${
                 activeSideTool === tool.id
                   ? 'border-[#10b981] bg-[#f0fdf8] text-[#10b981]'
                   : 'border-transparent text-[#94a3b8] hover:bg-[#f8fafc] hover:text-[#374151]'
               }`}
             >
-              <span>{tool.icon}</span>
-              <span className="text-[8px] font-bold">{tool.label}</span>
+              <span className="text-3xl leading-none">{tool.icon}</span>
+              <span className="text-xs font-bold">{tool.label}</span>
             </button>
           ))}
         </nav>
 
         {/* 左サイドパネル */}
-        <aside className="flex w-72 shrink-0 flex-col overflow-hidden border-r border-[#d9e0e6] bg-white">
+        <aside className="flex w-96 shrink-0 flex-col overflow-hidden border-r border-[#d9e0e6] bg-white">
           <div className="flex-1 overflow-y-auto">
             {renderSidePanel()}
           </div>
@@ -945,7 +961,7 @@ const App = () => {
 
         {/* 右パネル（デザイン編集・レイアウトの両方で表示） */}
         {(currentStep === 'design' || currentStep === 'layout') && (
-          <aside className="flex w-80 shrink-0 flex-col overflow-hidden border-l border-[#d9e0e6] bg-white">
+          <aside className="flex w-96 shrink-0 flex-col overflow-hidden border-l border-[#d9e0e6] bg-white">
             <div className="flex-1 overflow-y-auto">
               {renderRightPanel()}
             </div>
