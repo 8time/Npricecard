@@ -92,6 +92,7 @@ const App = () => {
   const [currentStep, setCurrentStep] = useState<AppStep>('design');
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
+  const [selectedInstanceIds, setSelectedInstanceIds] = useState<string[]>([]);
   const dirHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
   const [saveFolderName, setSaveFolderName] = useState<string | null>(null);
   const [designQueue, setDesignQueue] = useState<import('./types').SavedDocument[]>([]);
@@ -185,7 +186,7 @@ const App = () => {
 
     // 固定レイアウト幅: 左ナビ56 + 左パネル208 + 右パネル320
     // 固定レイアウト高: ヘッダー56 + キャンバスツールバー48 + ステータスバー32
-    const availableWidth = window.innerWidth - 56 - 208 - 320 - 32;
+    const availableWidth = window.innerWidth - 56 - 288 - 320 - 32;
     const availableHeight = window.innerHeight - 56 - 48 - 32 - 32;
 
     const fitZoom = Math.min(availableWidth / canvasWidth, availableHeight / canvasHeight);
@@ -495,6 +496,8 @@ const App = () => {
     (templateId: import('./types').TemplateId) => {
       dispatch({ type: 'setTemplate', templateId });
       setCurrentStep('design');
+      setSelectedInstanceIds([]);
+      setSelectedInstanceId(null);
       setNotice('テンプレートを適用しました');
     },
     [dispatch],
@@ -515,6 +518,7 @@ const App = () => {
           }
           onAutoLayout={(count) => dispatch({ type: 'autoLayout', count })}
           onClearInstances={() => dispatch({ type: 'clearInstances' })}
+          onCenterInstances={() => dispatch({ type: 'centerInstances' })}
           onToggleSnap={() => dispatch({ type: 'toggleSnap' })}
           onToggleCropMarks={() => dispatch({ type: 'toggleCropMarks' })}
           onSetLayoutGap={(xMm, yMm) => dispatch({ type: 'setLayoutGap', xMm, yMm })}
@@ -565,6 +569,30 @@ const App = () => {
             dispatch({ type: 'updateInstanceDesign', id: selectedInstanceId, design: { [field]: value } });
           } else {
             dispatch({ type: 'setField', field, value });
+          }
+          setNotice('保存中...');
+        }}
+        onChangeProductNameColor={(color) => {
+          if (selectedInstanceId) {
+            dispatch({ type: 'updateInstanceDesign', id: selectedInstanceId, design: { productNameColor: color } });
+          } else {
+            dispatch({ type: 'setProductNameColor', color });
+          }
+          setNotice('保存中...');
+        }}
+        onChangePriceColor={(color) => {
+          if (selectedInstanceId) {
+            dispatch({ type: 'updateInstanceDesign', id: selectedInstanceId, design: { priceColor: color } });
+          } else {
+            dispatch({ type: 'setPriceColor', color });
+          }
+          setNotice('保存中...');
+        }}
+        onChangePrTextColor={(color) => {
+          if (selectedInstanceId) {
+            dispatch({ type: 'updateInstanceDesign', id: selectedInstanceId, design: { prTextColor: color } });
+          } else {
+            dispatch({ type: 'setPrTextColor', color });
           }
           setNotice('保存中...');
         }}
@@ -743,7 +771,7 @@ const App = () => {
   };
 
   return (
-    <div className="h-screen min-w-[1180px] overflow-hidden bg-[#eef2f5] text-[#111827]" style={{ fontFamily: "'Inter', 'Noto Sans JP', sans-serif" }}>
+    <div className="h-screen min-w-[1264px] overflow-hidden bg-[#eef2f5] text-[#111827]" style={{ fontFamily: "'Inter', 'Noto Sans JP', sans-serif" }}>
       {/* ヘッダー */}
       <header className="flex h-14 items-center justify-between border-b border-[#2a3a4f] bg-[#0f1724] px-4 text-white">
         <div className="flex items-center gap-3">
@@ -811,7 +839,7 @@ const App = () => {
 
       <main className="flex h-[calc(100vh-56px)] overflow-hidden">
         {/* 左アイコンナビ */}
-        <nav className="flex w-14 flex-col border-r border-[#d9e0e6] bg-white pt-2">
+        <nav className="flex w-14 shrink-0 flex-col border-r border-[#d9e0e6] bg-white pt-2">
           {SIDE_TOOLS.map((tool) => (
             <button
               key={tool.id}
@@ -831,7 +859,7 @@ const App = () => {
         </nav>
 
         {/* 左サイドパネル */}
-        <aside className="flex w-52 flex-col overflow-hidden border-r border-[#d9e0e6] bg-white">
+        <aside className="flex w-72 shrink-0 flex-col overflow-hidden border-r border-[#d9e0e6] bg-white">
           <div className="flex-1 overflow-y-auto">
             {renderSidePanel()}
           </div>
@@ -867,6 +895,8 @@ const App = () => {
         <CanvasStage
           document={documentForCanvas}
           zoom={zoom}
+          savedItems={state.savedItems}
+          selectedInstanceIds={selectedInstanceIds}
           onCanvasReady={handleCanvasReady}
           onZoomIn={() => setZoom((c) => Math.min(MAX_ZOOM, Number((c + ZOOM_STEP).toFixed(2))))}
           onZoomOut={() => setZoom((c) => Math.max(MIN_ZOOM, Number((c - ZOOM_STEP).toFixed(2))))}
@@ -905,6 +935,12 @@ const App = () => {
             setSelectedObjectId(objId);
             setSelectedInstanceId(instId);
           }}
+          onMultiSelectionChange={(ids) => {
+            setSelectedInstanceIds(ids);
+            if (ids.length > 0) setSelectedInstanceId(ids[0]);
+          }}
+          onGroupInstances={(instanceIds) => dispatch({ type: 'groupInstances', instanceIds })}
+          onUngroupInstances={(groupId) => dispatch({ type: 'ungroupInstances', groupId })}
         />
 
         {/* 右パネル（デザイン編集・レイアウトの両方で表示） */}

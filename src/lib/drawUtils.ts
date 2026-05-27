@@ -54,7 +54,10 @@ export const drawCardObjects = async (
   };
 
   const parts = new Map<string, any>();
-  parts.set('productName', makeTextbox('productName', design.productName, template.productName));
+  const productNameStyle = design.productNameColor
+    ? { ...template.productName, fill: design.productNameColor }
+    : template.productName;
+  parts.set('productName', makeTextbox('productName', design.productName, productNameStyle));
   parts.set('taxLabel', makeTextbox('taxLabel', formatTaxLabel(design), template.taxLabel));
   
   // 価格
@@ -66,6 +69,7 @@ export const drawCardObjects = async (
 
   const priceTb = new Textbox(fullPriceText, {
     ...template.price,
+    ...(design.priceColor ? { fill: design.priceColor } : {}),
     fontSize: template.price.fontSize * su,
     fontFamily: design.fontFamily,
     left: (isPreview ? 0 : cardX) + priceLayout.left * sx,
@@ -99,7 +103,10 @@ export const drawCardObjects = async (
     priceTb.setSelectionStyles({ fontSize: yenSize }, yenIndex, yenIndex + 1);
   }
   parts.set('price', priceTb);
-  parts.set('prText', makeTextbox('prText', design.prText, template.prText));
+  const prTextStyle = design.prTextColor
+    ? { ...template.prText, fill: design.prTextColor }
+    : template.prText;
+  parts.set('prText', makeTextbox('prText', design.prText, prTextStyle));
 
   design.customTextLayers?.forEach((l: any) => {
     parts.set(l.id, makeTextbox(l.id, l.text, l.style));

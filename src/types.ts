@@ -142,6 +142,13 @@ export type CardDocument = {
   layoutMode: boolean;
   mergeFields: MergeField[];
   quantity: number;
+  productNameColor?: string;
+  priceColor?: string;
+  prTextColor?: string;
+  instanceGroups: Array<{
+    id: string;
+    instanceIds: string[];
+  }>;
 };
 
 export type CardDesign = Omit<CardDocument, 'instances' | 'layoutMode' | 'paperSizeId'>;

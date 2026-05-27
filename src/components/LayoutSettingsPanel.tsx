@@ -15,6 +15,7 @@ type Props = {
   onCustomDimensionsChange: (widthMm: number, heightMm: number) => void;
   onAutoLayout: (count: number) => void;
   onClearInstances: () => void;
+  onCenterInstances: () => void;
   onToggleSnap: () => void;
   onToggleCropMarks: () => void;
   onSetLayoutGap: (xMm: number, yMm: number) => void;
@@ -48,6 +49,7 @@ export const LayoutSettingsPanel: React.FC<Props> = ({
   onCustomDimensionsChange,
   onAutoLayout,
   onClearInstances,
+  onCenterInstances,
   onToggleSnap,
   onToggleCropMarks,
   onSetLayoutGap,
@@ -312,13 +314,23 @@ export const LayoutSettingsPanel: React.FC<Props> = ({
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          onClick={onClearInstances}
-          className="h-8 w-full rounded text-[10px] font-bold text-[#ef4444] transition hover:bg-[#fef2f2]"
-        >
-          全消去
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onCenterInstances}
+            disabled={document.instances.length === 0}
+            className="h-8 flex-1 rounded text-[10px] font-bold text-[#3b82f6] transition hover:bg-[#eff6ff] disabled:cursor-not-allowed disabled:text-[#cbd5e1]"
+          >
+            中央配置
+          </button>
+          <button
+            type="button"
+            onClick={onClearInstances}
+            className="h-8 flex-1 rounded text-[10px] font-bold text-[#ef4444] transition hover:bg-[#fef2f2]"
+          >
+            全消去
+          </button>
+        </div>
       </section>
 
       {/* 複数デザイン面付け */}

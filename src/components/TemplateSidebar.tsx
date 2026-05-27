@@ -89,8 +89,8 @@ export const TemplateSidebar = ({
                 type="button"
                 draggable
                 onDragStart={(e) => {
-                  e.dataTransfer.setData('application/json', JSON.stringify({ type: 'saved', item }));
-                  e.dataTransfer.setData('application/price-card-saved', JSON.stringify(item));
+                  e.dataTransfer.setData('application/json', JSON.stringify({ type: 'saved', id: item.id }));
+                  e.dataTransfer.setData('application/price-card-saved', item.id);
                   e.dataTransfer.effectAllowed = 'copy';
                 }}
                 onClick={() => onLoadSaved(item)}

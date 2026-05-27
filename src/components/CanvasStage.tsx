@@ -7,7 +7,7 @@ import {
   PRINT_MARGIN_PX,
   WORKSPACE_PADDING,
 } from '../lib/canvasWorkspace';
-import { drawCropMarks } from '../lib/cropMarks';
+import { drawCropMarks, drawCropMarksFromInstances } from '../lib/cropMarks';
 import type { PaperSizeId, CardSizeId } from '../lib/canvasWorkspace';
 import { drawCardObjects } from '../lib/drawUtils';
 import { DEFAULT_LAYER_ORDER, getDefaultLayout, getTemplateById } from '../templates';
@@ -16,6 +16,8 @@ import type { CardDesign, CardDocument, EditableObjectId, ObjectLayout, SavedDoc
 interface CanvasStageProps {
   document: CardDocument;
   zoom: number;
+  savedItems: SavedDocument[];
+  selectedInstanceIds: string[];
   onCanvasReady: (canvas: Canvas) => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -30,6 +32,9 @@ interface CanvasStageProps {
   onUpdateInstance: (id: string, x: number, y: number, angle: number) => void;
   onUpdateInstanceCropMarks: (id: string, show: boolean) => void;
   onSelectionChange: (objectId: string | null, instanceId: string | null) => void;
+  onMultiSelectionChange: (instanceIds: string[]) => void;
+  onGroupInstances: (instanceIds: string[]) => void;
+  onUngroupInstances: (groupId: string) => void;
 }
 
 type CanvasObjectWithData = FabricObject & {
@@ -103,6 +108,8 @@ const createCardFrame = (left: number, top: number, width: number, height: numbe
 export const CanvasStage: React.FC<CanvasStageProps> = ({
   document,
   zoom,
+  savedItems,
+  selectedInstanceIds,
   onCanvasReady,
   onZoomIn,
   onZoomOut,
@@ -113,12 +120,18 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   onRemoveInstance,
   onUpdateInstance,
   onSelectionChange,
+  onMultiSelectionChange,
+  onGroupInstances,
+  onUngroupInstances,
 }) => {
   const canvasElementRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<Canvas | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const documentRef = useRef(document);
   const onRemoveInstanceRef = useRef(onRemoveInstance);
+  const onGroupInstancesRef = useRef(onGroupInstances);
+  const onUngroupInstancesRef = useRef(onUngroupInstances);
+  const selectedInstanceIdsRef = useRef(selectedInstanceIds);
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
 
@@ -129,6 +142,18 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   useEffect(() => {
     onRemoveInstanceRef.current = onRemoveInstance;
   }, [onRemoveInstance]);
+
+  useEffect(() => {
+    onGroupInstancesRef.current = onGroupInstances;
+  }, [onGroupInstances]);
+
+  useEffect(() => {
+    onUngroupInstancesRef.current = onUngroupInstances;
+  }, [onUngroupInstances]);
+
+  useEffect(() => {
+    selectedInstanceIdsRef.current = selectedInstanceIds;
+  }, [selectedInstanceIds]);
 
   // キャンバスの初期化
   useEffect(() => {
@@ -145,26 +170,33 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     fabricRef.current = canvas;
     onCanvasReady(canvas);
 
-    canvas.on('selection:created', (e) => {
-      const selected = e.selected?.[0] as CanvasObjectWithData | undefined;
-      if (selected?.data?.objectId) {
-        onSelectionChange(selected.data.objectId, null);
-      } else if (selected?.data?.instanceId) {
-        onSelectionChange(null, selected.data.instanceId);
-      }
-    });
+    const notifySelection = () => {
+      const active = canvas.getActiveObjects() as CanvasObjectWithData[];
+      const instanceIds = active
+        .map((o) => o.data?.instanceId)
+        .filter((id): id is string => !!id);
+      const objectIds = active
+        .map((o) => o.data?.objectId as string | undefined)
+        .filter((id): id is string => !!id);
 
-    canvas.on('selection:updated', (e) => {
-      const selected = e.selected?.[0] as CanvasObjectWithData | undefined;
-      if (selected?.data?.objectId) {
-        onSelectionChange(selected.data.objectId, null);
-      } else if (selected?.data?.instanceId) {
-        onSelectionChange(null, selected.data.instanceId);
+      if (instanceIds.length > 0) {
+        onSelectionChange(null, instanceIds[0]);
+        onMultiSelectionChange(instanceIds);
+      } else if (objectIds.length > 0) {
+        onSelectionChange(objectIds[0] as EditableObjectId, null);
+        onMultiSelectionChange([]);
+      } else {
+        onSelectionChange(null, null);
+        onMultiSelectionChange([]);
       }
-    });
+    };
+
+    canvas.on('selection:created', notifySelection);
+    canvas.on('selection:updated', notifySelection);
 
     canvas.on('selection:cleared', () => {
       onSelectionChange(null, null);
+      onMultiSelectionChange([]);
     });
 
     const SNAP_PX = 12;
@@ -237,6 +269,29 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         });
       } else if (obj.data?.instanceId) {
         onUpdateInstance(obj.data.instanceId, obj.left ?? 0, obj.top ?? 0, obj.angle ?? 0);
+      } else if (typeof (obj as any).getObjects === 'function') {
+        // ActiveSelection: 複数インスタンスをまとめて移動した場合
+        const sel = obj as any;
+        for (const child of (sel.getObjects() as CanvasObjectWithData[])) {
+          if (!child.data?.instanceId) continue;
+          // calcTransformMatrix() でキャンバス絶対座標の変換行列を取得
+          // mat[4]=絶対中心X, mat[5]=絶対中心Y
+          const mat = (child as any).calcTransformMatrix() as number[];
+          const cx = mat[4];
+          const cy = mat[5];
+          const childAngle = (child as any).angle ?? 0;
+          let instX: number;
+          let instY: number;
+          if (Math.abs(childAngle - 90) < 1) {
+            // angle=90: fabricのleft=視覚右端, top=視覚上端
+            instX = cx + cardPxHeight / 2;
+            instY = cy - cardPxWidth / 2;
+          } else {
+            instX = cx - cardPxWidth / 2;
+            instY = cy - cardPxHeight / 2;
+          }
+          onUpdateInstance(child.data.instanceId as string, instX, instY, childAngle);
+        }
       }
     });
 
@@ -296,6 +351,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
     const { cardX, cardY, cardPxWidth, cardPxHeight, paperX, paperY, paperWidth, paperHeight } =
       getCardOrigin(document.paperSizeId, document.cardSizeId, document.customWidthMm, document.customHeightMm);
+
+    // canvas.clear() が selection:cleared を発火して selectedInstanceIds を上書きする前に
+    // この時点での選択IDをクロージャに捕捉する
+    const capturedSelectedIds = selectedInstanceIds;
 
     let cancelled = false;
 
@@ -365,28 +424,78 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
             canvas.add(group);
           }
 
-          // 全体トンボ描画
+          // トンボ描画
           if (document.showCropMarks && document.instances.length > 0) {
-            const layout = computeAutoLayout(
-              document.paperSizeId,
-              document.cardSizeId,
-              document.customWidthMm,
-              document.customHeightMm,
-              gapXMm,
-              gapYMm,
-            );
-            const { finalW, finalH, finalCols, gapX, gapY, useRotated } = layout;
-            const n = document.instances.length;
-            const cols = Math.min(finalCols, n);
-            const rows = Math.ceil(n / Math.max(1, finalCols));
-            // 実際のインスタンス位置を基準にトンボを配置する（手動配置にも対応）
-            // angle=90 CCW 回転時: left=visual_right なので blockX = inst.x - finalW
-            const firstInst = document.instances[0];
-            const blockX = useRotated
-              ? Math.round(firstInst.x - finalW)
-              : Math.round(firstInst.x);
-            const blockY = Math.round(firstInst.y);
-            drawCropMarks(canvas, blockX, blockY, cols, rows, finalW, finalH, gapX, gapY);
+            const instanceGroups = document.instanceGroups || [];
+            // getBoundingRect(absolute, calculate) の使い分け:
+            //   absolute=false (デフォルト) → oCoords: ビューポート変換済み = スクリーン座標 ← バグの原因
+            //   absolute=true              → aCoords: ビューポート変換なし = ワールド座標  ← 正しい
+            // calculate=true で毎回強制再計算し、座標キャッシュの陳腐化を防ぐ
+            const getAbsBoundingRect = (obj: CanvasObjectWithData) => {
+              obj.setCoords(); // キャッシュを明示的に更新
+              return (obj as any).getBoundingRect(true, true) as { left: number; top: number; width: number; height: number };
+            };
+
+            const allCanvasObjs = canvas.getObjects() as CanvasObjectWithData[];
+
+            if (instanceGroups.length > 0) {
+              // グループあり: 選択状態に依存せずグループデータから直接描画（安定性向上）
+              const groupedIds = new Set(instanceGroups.flatMap((g) => g.instanceIds));
+
+              for (const grp of instanceGroups) {
+                let gMinX = Infinity, gMinY = Infinity, gMaxX = -Infinity, gMaxY = -Infinity;
+                for (const id of grp.instanceIds) {
+                  const obj = allCanvasObjs.find((o) => o.data?.instanceId === id);
+                  if (!obj) continue;
+                  const r = getAbsBoundingRect(obj);
+                  gMinX = Math.min(gMinX, r.left);
+                  gMinY = Math.min(gMinY, r.top);
+                  gMaxX = Math.max(gMaxX, r.left + r.width);
+                  gMaxY = Math.max(gMaxY, r.top + r.height);
+                }
+                if (isFinite(gMinX)) {
+                  drawCropMarks(canvas, gMinX, gMinY, 1, 1, gMaxX - gMinX, gMaxY - gMinY, 0, 0);
+                }
+              }
+
+              // グループ外のインスタンスは選択ベース
+              const ungroupedSelected = capturedSelectedIds.filter((id) => !groupedIds.has(id));
+              if (ungroupedSelected.length > 0) {
+                const ungroupedInsts = document.instances.filter((i) => ungroupedSelected.includes(i.id));
+                if (ungroupedInsts.length > 0) {
+                  drawCropMarksFromInstances(canvas, ungroupedInsts, cardPxWidth, cardPxHeight);
+                }
+              }
+            } else {
+              // グループなし: 選択インスタンスまたは自動グリッドトンボ
+              const targetInstances = capturedSelectedIds.length > 0
+                ? document.instances.filter((i) => capturedSelectedIds.includes(i.id))
+                : null;
+
+              if (targetInstances && targetInstances.length > 0) {
+                drawCropMarksFromInstances(canvas, targetInstances, cardPxWidth, cardPxHeight);
+              } else {
+                // 選択なし：全インスタンスの自動グリッドトンボ
+                const layout = computeAutoLayout(
+                  document.paperSizeId,
+                  document.cardSizeId,
+                  document.customWidthMm,
+                  document.customHeightMm,
+                  gapXMm,
+                  gapYMm,
+                );
+                const { finalW, finalH, finalCols, gapX, gapY, useRotated } = layout;
+                const n = document.instances.length;
+                const cols = Math.min(finalCols, n);
+                const rows = Math.ceil(n / Math.max(1, finalCols));
+                const firstInst = document.instances[0];
+                const blockX = useRotated
+                  ? Math.round(firstInst.x - finalW)
+                  : Math.round(firstInst.x);
+                const blockY = Math.round(firstInst.y);
+                drawCropMarks(canvas, blockX, blockY, cols, rows, finalW, finalH, gapX, gapY);
+              }
+            }
           }
         } else {
           // デザイン編集モード: メインデザインを描画
@@ -432,6 +541,25 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
           canvas.requestRenderAll();
         }
       }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'g') {
+        e.preventDefault();
+        const ids = selectedInstanceIdsRef.current;
+        if (!e.shiftKey) {
+          // Ctrl+G: グループ化
+          if (ids.length >= 2) {
+            onGroupInstancesRef.current(ids);
+          }
+        } else {
+          // Shift+Ctrl+G: グループ化解除
+          const doc = documentRef.current;
+          const groups = doc.instanceGroups || [];
+          const group = groups.find((g) => ids.some((id) => g.instanceIds.includes(id)));
+          if (group) {
+            onUngroupInstancesRef.current(group.id);
+          }
+        }
+      }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.code === 'Space') {
@@ -454,23 +582,23 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
   const handleContainerDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    // レイアウトモード以外ではインスタンス追加しない
+    if (!document.layoutMode) return;
+
     const jsonData = e.dataTransfer.getData('application/json');
     const templateId = e.dataTransfer.getData('application/price-card-template') as TemplateId;
-    const savedData = e.dataTransfer.getData('application/price-card-saved');
-    const data = jsonData || (templateId ? JSON.stringify({ type: 'template', id: templateId }) : savedData);
+    const savedId = e.dataTransfer.getData('application/price-card-saved');
+    const data = jsonData || (templateId ? JSON.stringify({ type: 'template', id: templateId }) : (savedId ? JSON.stringify({ type: 'saved', id: savedId }) : ''));
     if (!data) return;
 
     try {
-      const payload = JSON.parse(data) as DropPayload | SavedDocument;
+      const payload = JSON.parse(data) as DropPayload | { type: 'saved'; id: string } | SavedDocument;
       const container = containerRef.current;
       if (!container) return;
 
       const rect = container.getBoundingClientRect();
-      const scrollLeft = container.scrollLeft;
-      const scrollTop = container.scrollTop;
-
-      const dropX = (e.clientX - rect.left + scrollLeft) / zoom;
-      const dropY = (e.clientY - rect.top + scrollTop) / zoom;
+      const dropX = (e.clientX - rect.left + container.scrollLeft) / zoom;
+      const dropY = (e.clientY - rect.top + container.scrollTop) / zoom;
 
       const { paperX, paperY, paperWidth, paperHeight, cardPxWidth, cardPxHeight } = getCardOrigin(
         document.paperSizeId,
@@ -492,9 +620,13 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       if ('type' in payload && payload.type === 'template') {
         onAddInstance(position.x, position.y, createTemplateDesign(document, payload.id));
       } else if ('type' in payload && payload.type === 'saved') {
-        onAddInstance(position.x, position.y, payload.item.document);
+        // ID参照：savedItemsから検索
+        const savedItem = savedItems.find((i) => i.id === (payload as { type: 'saved'; id: string }).id);
+        if (savedItem) {
+          onAddInstance(position.x, position.y, savedItem.document);
+        }
       } else if ('document' in payload) {
-        onAddInstance(position.x, position.y, payload.document);
+        onAddInstance(position.x, position.y, (payload as SavedDocument).document);
       }
     } catch (err) {
       console.error('Drop error:', err);

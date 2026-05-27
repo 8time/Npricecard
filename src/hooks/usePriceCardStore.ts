@@ -2,7 +2,7 @@ import { useEffect, useReducer, useState } from 'react';
 import { DEFAULT_FONT_FAMILY } from '../lib/fonts';
 import { loadDocuments, saveDocument } from '../lib/storage';
 import { DEFAULT_LAYER_ORDER, getDefaultLayout, getDefaultImageLayout, getTemplateById } from '../templates';
-import { computeAutoLayout } from '../lib/canvasWorkspace';
+import { computeAutoLayout, getCardOrigin, PRINT_MARGIN_PX } from '../lib/canvasWorkspace';
 import type {
   CardDesign,
   CardDocument,
@@ -62,7 +62,13 @@ type Action =
   | { type: 'updateInstanceDesign'; id: string; design: Partial<CardDesign> }
   | { type: 'autoLayout'; count: number }
   | { type: 'autoLayoutWithDesigns'; designs: CardDocument[]; count: number }
+  | { type: 'setProductNameColor'; color: string }
+  | { type: 'setPriceColor'; color: string }
+  | { type: 'setPrTextColor'; color: string }
   | { type: 'clearInstances' }
+  | { type: 'centerInstances' }
+  | { type: 'groupInstances'; instanceIds: string[] }
+  | { type: 'ungroupInstances'; groupId: string }
   | { type: 'setLayoutGap'; xMm: number; yMm: number }
   | { type: 'undo' }
   | { type: 'redo' }
@@ -105,6 +111,7 @@ const initialState: State = {
     layoutMode: false,
     mergeFields: [],
     quantity: 1,
+    instanceGroups: [],
   },
   savedItems: [],
   past: [],
@@ -155,6 +162,7 @@ const migrateDocument = (doc: CardDocument): CardDocument => {
     layerOrder,
     layerMeta: doc.layerMeta || {},
     mergeFields: doc.mergeFields || [],
+    instanceGroups: doc.instanceGroups || [],
     imageLayers,
     imageDataUrl: imageDataUrl ?? null,
     layout,
@@ -231,6 +239,12 @@ const baseReducer = (state: State, action: Action): State => {
         },
       };
     }
+    case 'setProductNameColor':
+      return { ...state, document: { ...state.document, productNameColor: action.color } };
+    case 'setPriceColor':
+      return { ...state, document: { ...state.document, priceColor: action.color } };
+    case 'setPrTextColor':
+      return { ...state, document: { ...state.document, prTextColor: action.color } };
     case 'setField':
       return { ...state, document: { ...state.document, [action.field]: action.value } };
     case 'setFontFamily':
@@ -467,19 +481,10 @@ const baseReducer = (state: State, action: Action): State => {
         ? cloneDesignSnapshot({ ...state.document, ...action.design })
         : cloneDesignSnapshot(state.document);
 
-      // ドロップしたデザインのカードサイズをメインドキュメントに反映（右パネルでリサイズできるよう）
-      const incomingCardSizeId = action.design?.cardSizeId;
-      const cardSizeId = incomingCardSizeId ?? state.document.cardSizeId;
-      const customWidthMm = action.design?.customWidthMm ?? state.document.customWidthMm;
-      const customHeightMm = action.design?.customHeightMm ?? state.document.customHeightMm;
-
       return {
         ...state,
         document: {
           ...state.document,
-          cardSizeId,
-          customWidthMm,
-          customHeightMm,
           instances: [
             ...state.document.instances,
             {
@@ -494,14 +499,19 @@ const baseReducer = (state: State, action: Action): State => {
         },
       };
     }
-    case 'removeInstance':
+    case 'removeInstance': {
+      const updatedGroups = (state.document.instanceGroups || [])
+        .map((g) => ({ ...g, instanceIds: g.instanceIds.filter((id) => id !== action.id) }))
+        .filter((g) => g.instanceIds.length >= 2);
       return {
         ...state,
         document: {
           ...state.document,
           instances: state.document.instances.filter((i) => i.id !== action.id),
+          instanceGroups: updatedGroups,
         },
       };
+    }
     case 'updateInstance':
       return {
         ...state,
@@ -535,8 +545,48 @@ const baseReducer = (state: State, action: Action): State => {
     case 'clearInstances':
       return {
         ...state,
-        document: { ...state.document, instances: [] },
+        document: { ...state.document, instances: [], instanceGroups: [] },
       };
+    case 'centerInstances': {
+      if (state.document.instances.length === 0) return state;
+
+      const { paperX, paperY, paperWidth, paperHeight, cardPxWidth, cardPxHeight } = getCardOrigin(
+        state.document.paperSizeId,
+        state.document.cardSizeId,
+        state.document.customWidthMm,
+        state.document.customHeightMm,
+      );
+
+      const instances = state.document.instances;
+      const getBounds = (inst: typeof instances[0]) => {
+        if (inst.angle === 90) {
+          return { left: inst.x - cardPxHeight, top: inst.y, right: inst.x, bottom: inst.y + cardPxWidth };
+        }
+        return { left: inst.x, top: inst.y, right: inst.x + cardPxWidth, bottom: inst.y + cardPxHeight };
+      };
+
+      const allBounds = instances.map(getBounds);
+      const minX = Math.min(...allBounds.map((b) => b.left));
+      const minY = Math.min(...allBounds.map((b) => b.top));
+      const maxX = Math.max(...allBounds.map((b) => b.right));
+      const maxY = Math.max(...allBounds.map((b) => b.bottom));
+
+      const printableX = paperX + PRINT_MARGIN_PX;
+      const printableY = paperY + PRINT_MARGIN_PX;
+      const printableW = Math.max(0, paperWidth - PRINT_MARGIN_PX * 2);
+      const printableH = Math.max(0, paperHeight - PRINT_MARGIN_PX * 2);
+
+      const dx = Math.round(printableX + (printableW - (maxX - minX)) / 2 - minX);
+      const dy = Math.round(printableY + (printableH - (maxY - minY)) / 2 - minY);
+
+      return {
+        ...state,
+        document: {
+          ...state.document,
+          instances: instances.map((i) => ({ ...i, x: Math.round(i.x + dx), y: Math.round(i.y + dy) })),
+        },
+      };
+    }
     case 'autoLayout': {
       const {
         paperX,
@@ -643,6 +693,26 @@ const baseReducer = (state: State, action: Action): State => {
       }
       return { ...state, document: { ...state.document, instances: newInstances } };
     }
+    case 'groupInstances': {
+      if (action.instanceIds.length < 2) return state;
+      // 既存グループから対象インスタンスを除外してから新グループを追加
+      const prevGroups = (state.document.instanceGroups || []).filter(
+        (g) => !g.instanceIds.some((id) => action.instanceIds.includes(id))
+      );
+      const newGroup = { id: `group-${Date.now()}`, instanceIds: [...action.instanceIds] };
+      return {
+        ...state,
+        document: { ...state.document, instanceGroups: [...prevGroups, newGroup] },
+      };
+    }
+    case 'ungroupInstances':
+      return {
+        ...state,
+        document: {
+          ...state.document,
+          instanceGroups: (state.document.instanceGroups || []).filter((g) => g.id !== action.groupId),
+        },
+      };
     case 'setLayoutGap':
       return {
         ...state,

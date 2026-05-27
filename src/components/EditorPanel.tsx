@@ -30,12 +30,69 @@ import type {
   ObjectLayout,
 } from '../types';
 
+const PRODUCT_NAME_COLORS: { hex: string; label: string }[] = [
+  { hex: '#111827', label: '黒' },
+  { hex: '#FFFFFF', label: '白' },
+  { hex: '#d13b24', label: '赤' },
+  { hex: '#FF6600', label: 'オレンジ' },
+  { hex: '#FFFF00', label: '黄' },
+  { hex: '#008000', label: '緑' },
+  { hex: '#0000FF', label: '青' },
+  { hex: '#800080', label: '紫' },
+];
+
+const ColorPalette = ({
+  currentColor,
+  defaultColor,
+  onChange,
+}: {
+  currentColor: string | undefined;
+  defaultColor: string;
+  onChange: (color: string) => void;
+}) => {
+  const active = (currentColor ?? defaultColor).toLowerCase();
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {PRODUCT_NAME_COLORS.map(({ hex, label }) => {
+        const isActive = active === hex.toLowerCase();
+        return (
+          <button
+            key={hex}
+            type="button"
+            title={`${label} (${hex})`}
+            onClick={() => onChange(hex)}
+            className="relative h-6 w-6 rounded-full transition-transform hover:scale-110 focus:outline-none"
+            style={{
+              backgroundColor: hex,
+              boxShadow: hex === '#FFFFFF' ? 'inset 0 0 0 1px #d1d5db' : undefined,
+              outline: isActive ? '2px solid #2d8fc0' : '2px solid transparent',
+              outlineOffset: '2px',
+            }}
+          >
+            {isActive && (
+              <span
+                className="absolute inset-0 flex items-center justify-center text-[10px] font-black leading-none"
+                style={{ color: hex === '#FFFFFF' || hex === '#FFFF00' ? '#374151' : '#ffffff' }}
+              >
+                ✓
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+
 type Props = {
   document: CardDocument;
   fonts: FontOption[];
   layerOrder: EditableObjectId[];
   customTextLayers: CustomTextLayer[];
   onChangeField: (field: 'productName' | 'price' | 'prText', value: string) => void;
+  onChangeProductNameColor: (color: string) => void;
+  onChangePriceColor: (color: string) => void;
+  onChangePrTextColor: (color: string) => void;
   onCardSizeChange: (cardSizeId: CardSizeId) => void;
   onCustomDimensionsChange: (widthMm: number, heightMm: number) => void;
   onAddTextLayer: () => void;
@@ -233,6 +290,9 @@ export const EditorPanel = ({
   layerOrder,
   customTextLayers,
   onChangeField,
+  onChangeProductNameColor,
+  onChangePriceColor,
+  onChangePrTextColor,
   onCardSizeChange,
   onCustomDimensionsChange,
   onAddTextLayer,
@@ -383,32 +443,53 @@ export const EditorPanel = ({
           </div>
         </section>
 
-        <label className="mb-4 block text-sm font-bold">
-          商品名
-          <input
-            value={document.productName}
-            onChange={(event) => onChangeField('productName', event.target.value)}
-            className={fieldClassName}
+        <div className="mb-4">
+          <label className="block text-sm font-bold">
+            商品名
+            <input
+              value={document.productName}
+              onChange={(event) => onChangeField('productName', event.target.value)}
+              className={fieldClassName}
+            />
+          </label>
+          <ColorPalette
+            currentColor={document.productNameColor}
+            defaultColor="#111827"
+            onChange={onChangeProductNameColor}
           />
-        </label>
+        </div>
 
-        <label className="mb-4 block text-sm font-bold">
-          価格
-          <input
-            value={document.price}
-            onChange={(event) => onChangeField('price', event.target.value.replace(/[^\d]/g, ''))}
-            className={fieldClassName}
+        <div className="mb-4">
+          <label className="block text-sm font-bold">
+            価格
+            <input
+              value={document.price}
+              onChange={(event) => onChangeField('price', event.target.value.replace(/[^\d]/g, ''))}
+              className={fieldClassName}
+            />
+          </label>
+          <ColorPalette
+            currentColor={document.priceColor}
+            defaultColor="#d13b24"
+            onChange={onChangePriceColor}
           />
-        </label>
+        </div>
 
-        <label className="mb-4 block text-sm font-bold">
-          PR文
-          <textarea
-            value={document.prText}
-            onChange={(event) => onChangeField('prText', event.target.value)}
-            className={`${fieldClassName} min-h-[72px] resize-none`}
+        <div className="mb-4">
+          <label className="block text-sm font-bold">
+            PR文
+            <textarea
+              value={document.prText}
+              onChange={(event) => onChangeField('prText', event.target.value)}
+              className={`${fieldClassName} min-h-[72px] resize-none`}
+            />
+          </label>
+          <ColorPalette
+            currentColor={document.prTextColor}
+            defaultColor="#111827"
+            onChange={onChangePrTextColor}
           />
-        </label>
+        </div>
 
         <section className="mb-5 border-t border-[#e3e8ed] pt-5">
           <h3 className="mb-3 text-sm font-bold">フォント</h3>
