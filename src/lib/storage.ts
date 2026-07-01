@@ -1,4 +1,16 @@
-import type { SavedDocument, StoredFont } from '../types';
+import type { CardDocument, SavedDocument, StoredFont } from '../types';
+
+const stripImageData = (doc: CardDocument): CardDocument => ({
+  ...doc,
+  imageLayers: (doc.imageLayers || []).map((l) => ({ ...l, dataUrl: '' })),
+  instances: (doc.instances || []).map((inst) => ({
+    ...inst,
+    design: {
+      ...inst.design,
+      imageLayers: (inst.design.imageLayers || []).map((l) => ({ ...l, dataUrl: '' })),
+    },
+  })),
+});
 
 const DB_NAME = 'retro-pop-price-card-db';
 const DOCUMENTS_STORE = 'documents';
@@ -36,6 +48,18 @@ export const saveDocument = async (item: SavedDocument) => {
   db.close();
 };
 
+export const loadDocument = async (id: string): Promise<SavedDocument | null> => {
+  const db = await openDb();
+  const item = await new Promise<SavedDocument | null>((resolve, reject) => {
+    const tx = db.transaction(DOCUMENTS_STORE, 'readonly');
+    const req = tx.objectStore(DOCUMENTS_STORE).get(id);
+    req.onsuccess = () => resolve((req.result as SavedDocument) ?? null);
+    req.onerror = () => reject(req.error);
+  });
+  db.close();
+  return item;
+};
+
 export const loadDocuments = async () => {
   const db = await openDb();
   const items = await new Promise<SavedDocument[]>((resolve, reject) => {
@@ -45,7 +69,9 @@ export const loadDocuments = async () => {
     request.onerror = () => reject(request.error);
   });
   db.close();
-  return items.sort((a, b) => b.updatedAt - a.updatedAt);
+  return items
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .map((item) => ({ ...item, document: stripImageData(item.document) }));
 };
 
 export const deleteDocument = async (id: string) => {

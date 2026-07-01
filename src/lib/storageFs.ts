@@ -1,5 +1,17 @@
-import type { SavedDocument } from '../types';
+import type { CardDocument, SavedDocument } from '../types';
 import { getSavedDirHandle, setSavedDirHandle } from './storage';
+
+const stripImageData = (doc: CardDocument): CardDocument => ({
+  ...doc,
+  imageLayers: (doc.imageLayers || []).map((l) => ({ ...l, dataUrl: '' })),
+  instances: (doc.instances || []).map((inst) => ({
+    ...inst,
+    design: {
+      ...inst.design,
+      imageLayers: (inst.design.imageLayers || []).map((l) => ({ ...l, dataUrl: '' })),
+    },
+  })),
+});
 
 export const isFileSystemAccessSupported = (): boolean =>
   typeof window !== 'undefined' && 'showDirectoryPicker' in window;
@@ -55,6 +67,20 @@ export async function deleteDocumentFromFs(
   }
 }
 
+export async function loadDocumentFromFs(
+  dirHandle: FileSystemDirectoryHandle,
+  id: string,
+): Promise<SavedDocument | null> {
+  try {
+    const fileHandle = await dirHandle.getFileHandle(`${id}.json`);
+    const file = await fileHandle.getFile();
+    const text = await file.text();
+    return JSON.parse(text) as SavedDocument;
+  } catch {
+    return null;
+  }
+}
+
 export async function loadDocumentsFromFs(
   dirHandle: FileSystemDirectoryHandle,
 ): Promise<SavedDocument[]> {
@@ -64,7 +90,8 @@ export async function loadDocumentsFromFs(
     try {
       const file = await (entry as FileSystemFileHandle).getFile();
       const text = await file.text();
-      items.push(JSON.parse(text) as SavedDocument);
+      const item = JSON.parse(text) as SavedDocument;
+      items.push({ ...item, document: stripImageData(item.document) });
     } catch {
       // 壊れたファイルはスキップ
     }

@@ -3,6 +3,7 @@ import {
   initSaveFolder,
   isFileSystemAccessSupported,
   loadDocumentsFromFs,
+  loadDocumentFromFs,
   saveDocumentToFs,
   deleteDocumentFromFs,
   selectSaveFolder,
@@ -154,13 +155,15 @@ const App = () => {
         const items = await loadDocumentsFromFs(handle);
         dispatch({ type: 'setSavedItems', items });
 
-        // サムネイルがないアイテムを非同期でサムネイル生成して保存
+        // サムネイルがないアイテムを非同期でサムネイル生成して保存（フルデータを個別ロード）
         const missing = items.filter((item) => !item.thumbnail);
         if (missing.length > 0) {
           for (const item of missing) {
             try {
-              const thumbnail = await generateCardThumbnail(item.document);
-              await saveDocumentToFs(handle, { ...item, thumbnail });
+              const fullItem = await loadDocumentFromFs(handle, item.id);
+              if (!fullItem) continue;
+              const thumbnail = await generateCardThumbnail(fullItem.document);
+              await saveDocumentToFs(handle, { ...fullItem, thumbnail });
             } catch {
               // 生成失敗は無視
             }
@@ -448,8 +451,20 @@ const App = () => {
     setNotice('保存完了');
   };
 
-  const handleExportDesigns = () => {
-    const json = JSON.stringify(state.savedItems, null, 2);
+  const handleExportDesigns = async () => {
+    setNotice('バックアップ準備中...');
+    const fullItems: import('./types').SavedDocument[] = [];
+    for (const item of state.savedItems) {
+      if (dirHandleRef.current) {
+        const full = await loadDocumentFromFs(dirHandleRef.current, item.id);
+        fullItems.push(full || item);
+      } else {
+        const { loadDocument } = await import('./lib/storage');
+        const full = await loadDocument(item.id);
+        fullItems.push(full || item);
+      }
+    }
+    const json = JSON.stringify(fullItems, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -460,31 +475,46 @@ const App = () => {
     setNotice('バックアップを書き出しました');
   };
 
-  const handleImportDesigns = async (file: File) => {
+  const handleImportDesigns = async (files: File[]) => {
     try {
-      const text = await file.text();
-      const parsed = JSON.parse(text);
-      // 配列（書出ボタン形式）でも単体オブジェクト（FSフォルダ個別ファイル）でも受け付ける
-      const items = (Array.isArray(parsed) ? parsed : [parsed]) as import('./types').SavedDocument[];
-      if (items.length === 0 || typeof items[0] !== 'object') throw new Error('invalid format');
-      const { saveDocument, loadDocuments: ld } = await import('./lib/storage');
-      for (const item of items) {
-        // id がない場合は生成（古い形式・FS個別ファイル対応）
-        if (!item.id) {
-          item.id = `card-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        }
-        if (!item.thumbnail) {
-          try {
-            item.thumbnail = await generateCardThumbnail(item.document);
-          } catch {
-            // サムネイル生成失敗は無視
+      let totalCount = 0;
+      for (const file of files) {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        // 配列（書出ボタン形式）でも単体オブジェクト（FSフォルダ個別ファイル）でも受け付ける
+        const items = (Array.isArray(parsed) ? parsed : [parsed]) as import('./types').SavedDocument[];
+        if (items.length === 0 || typeof items[0] !== 'object') continue;
+        for (const item of items) {
+          // id がない場合は生成（古い形式・FS個別ファイル対応）
+          if (!item.id) {
+            item.id = `card-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
           }
+          if (!item.thumbnail) {
+            try {
+              item.thumbnail = await generateCardThumbnail(item.document);
+            } catch {
+              // サムネイル生成失敗は無視
+            }
+          }
+          if (dirHandleRef.current) {
+            await saveDocumentToFs(dirHandleRef.current, item);
+          } else {
+            const { saveDocument } = await import('./lib/storage');
+            await saveDocument(item);
+          }
+          totalCount++;
         }
-        await saveDocument(item);
       }
-      const loaded = await ld();
+      if (totalCount === 0) throw new Error('invalid format');
+      let loaded: import('./types').SavedDocument[];
+      if (dirHandleRef.current) {
+        loaded = await loadDocumentsFromFs(dirHandleRef.current);
+      } else {
+        const { loadDocuments: ld } = await import('./lib/storage');
+        loaded = await ld();
+      }
       dispatch({ type: 'setSavedItems', items: loaded });
-      setNotice(`${items.length}件のデザインを読み込みました`);
+      setNotice(`${totalCount}件のデザインを読み込みました`);
     } catch (err) {
       console.error('[import]', err);
       const msg = err instanceof Error ? err.message : String(err);
@@ -531,7 +561,16 @@ const App = () => {
               document: state.document,
             }]);
           }}
-          onAddSavedToQueue={(item) => setDesignQueue((q) => [...q, item])}
+          onAddSavedToQueue={async (item) => {
+            let fullItem: import('./types').SavedDocument | null = null;
+            if (dirHandleRef.current) {
+              fullItem = await loadDocumentFromFs(dirHandleRef.current, item.id);
+            } else {
+              const { loadDocument } = await import('./lib/storage');
+              fullItem = await loadDocument(item.id);
+            }
+            setDesignQueue((q) => [...q, fullItem || item]);
+          }}
           onRemoveFromQueue={(index) => setDesignQueue((q) => q.filter((_, i) => i !== index))}
           onClearQueue={() => setDesignQueue([])}
           onAutoLayoutWithDesigns={(count) => {
@@ -689,8 +728,15 @@ const App = () => {
             activeTemplateId={state.document.templateId}
             savedItems={state.savedItems}
             onSelectTemplate={handleSelectTemplate}
-            onLoadSaved={(item) => {
-              dispatch({ type: 'loadSavedDocument', item });
+            onLoadSaved={async (item) => {
+              let fullItem: import('./types').SavedDocument | null = null;
+              if (dirHandleRef.current) {
+                fullItem = await loadDocumentFromFs(dirHandleRef.current, item.id);
+              } else {
+                const { loadDocument } = await import('./lib/storage');
+                fullItem = await loadDocument(item.id);
+              }
+              dispatch({ type: 'loadSavedDocument', item: fullItem || item });
               setNotice('読み込み完了');
             }}
             onDeleteSaved={async (id) => {
@@ -957,6 +1003,15 @@ const App = () => {
           }}
           onGroupInstances={(instanceIds) => dispatch({ type: 'groupInstances', instanceIds })}
           onUngroupInstances={(groupId) => dispatch({ type: 'ungroupInstances', groupId })}
+          onFetchSavedDocument={async (id) => {
+            if (dirHandleRef.current) {
+              const item = await loadDocumentFromFs(dirHandleRef.current, id);
+              return item?.document ?? null;
+            }
+            const { loadDocument } = await import('./lib/storage');
+            const item = await loadDocument(id);
+            return item?.document ?? null;
+          }}
         />
 
         {/* 右パネル（デザイン編集・レイアウトの両方で表示） */}

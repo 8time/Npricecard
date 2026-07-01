@@ -8,7 +8,7 @@ type Props = {
   onLoadSaved: (item: SavedDocument) => void;
   onDeleteSaved: (id: string) => void;
   onExport: () => void;
-  onImport: (file: File) => void;
+  onImport: (files: File[]) => void;
 };
 
 export const TemplateSidebar = ({
@@ -38,14 +38,16 @@ export const TemplateSidebar = ({
           <div
             className={`mx-auto grid w-full place-items-center overflow-hidden rounded-md border bg-white cursor-grab active:cursor-grabbing transition ${
               activeTemplateId === template.id
-                ? 'border-[#328eaa] shadow-[0_0_0_2px_rgba(50,142,170,0.18)]'
-                : 'border-[#cfd8df] group-hover:border-[#328eaa]'
+                ? 'border-[#16a34a] shadow-[0_0_0_3px_rgba(22,163,74,0.25)]'
+                : 'border-[#cfd8df] group-hover:border-[#16a34a]'
             }`}
             style={{ aspectRatio: '10/7' }}
           >
             <div className="h-full w-full bg-white" />
           </div>
-          <div className="mt-2 text-base font-medium text-[#111827]">{template.name}</div>
+          <div className={`mt-2 text-base font-medium ${activeTemplateId === template.id ? 'text-[#16a34a]' : 'text-[#111827]'}`}>
+            {template.name}
+          </div>
         </button>
       ))}
     </div>
@@ -61,10 +63,11 @@ export const TemplateSidebar = ({
             <input
               type="file"
               accept=".json"
+              multiple
               className="hidden"
               onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) { onImport(file); e.target.value = ''; }
+                const files = Array.from(e.target.files || []);
+                if (files.length > 0) { onImport(files); e.target.value = ''; }
               }}
             />
             読込

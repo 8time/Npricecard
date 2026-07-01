@@ -416,7 +416,15 @@ const baseReducer = (state: State, action: Action): State => {
       };
     }
     case 'setSavedItems':
-      return { ...state, savedItems: action.items };
+      return {
+        ...state,
+        savedItems: action.items
+          .filter((item) => item.document != null)
+          .map((item) => ({
+            ...item,
+            document: migrateDocument(item.document),
+          })),
+      };
     case 'loadSavedDocument':
       return { ...state, document: migrateDocument(action.item.document) };
     case 'setCustomDimensions':
@@ -478,9 +486,14 @@ const baseReducer = (state: State, action: Action): State => {
         },
       };
     case 'addInstance': {
-      const designToUse = action.design
-        ? cloneDesignSnapshot({ ...state.document, ...action.design })
-        : cloneDesignSnapshot(state.document);
+      const mergedDesign = action.design
+        ? {
+            ...state.document,
+            ...action.design,
+            fontFamily: action.design.fontFamily || state.document.fontFamily || DEFAULT_FONT_FAMILY,
+          }
+        : state.document;
+      const designToUse = cloneDesignSnapshot(mergedDesign);
 
       return {
         ...state,
@@ -690,7 +703,8 @@ const baseReducer = (state: State, action: Action): State => {
       let placed = 0;
       for (let r = 0; r < actualRows && placed < targetCount; r++) {
         for (let c = 0; c < finalCols && placed < targetCount; c++) {
-          const src = action.designs[placed % action.designs.length];
+          const srcRaw = action.designs[placed % action.designs.length];
+          const src = { ...srcRaw, fontFamily: srcRaw.fontFamily || DEFAULT_FONT_FAMILY };
           const design = cloneDesignSnapshot(src);
           const cellX = startX + c * (finalW + gapX);
           const cellY = startY + r * (finalH + gapY);

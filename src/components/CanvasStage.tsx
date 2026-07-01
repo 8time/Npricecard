@@ -35,6 +35,7 @@ interface CanvasStageProps {
   onMultiSelectionChange: (instanceIds: string[]) => void;
   onGroupInstances: (instanceIds: string[]) => void;
   onUngroupInstances: (groupId: string) => void;
+  onFetchSavedDocument: (id: string) => Promise<CardDocument | null>;
 }
 
 type CanvasObjectWithData = FabricObject & {
@@ -123,6 +124,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   onMultiSelectionChange,
   onGroupInstances,
   onUngroupInstances,
+  onFetchSavedDocument,
 }) => {
   const canvasElementRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<Canvas | null>(null);
@@ -586,7 +588,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     e.dataTransfer.dropEffect = 'copy';
   };
 
-  const handleContainerDrop = (e: React.DragEvent) => {
+  const handleContainerDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     // レイアウトモード以外ではインスタンス追加しない
     if (!document.layoutMode) return;
@@ -626,10 +628,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       if ('type' in payload && payload.type === 'template') {
         onAddInstance(position.x, position.y, createTemplateDesign(document, payload.id));
       } else if ('type' in payload && payload.type === 'saved') {
-        // ID参照：savedItemsから検索
-        const savedItem = savedItems.find((i) => i.id === (payload as { type: 'saved'; id: string }).id);
-        if (savedItem) {
-          onAddInstance(position.x, position.y, savedItem.document);
+        const savedId = (payload as { type: 'saved'; id: string }).id;
+        const fullDoc = await onFetchSavedDocument(savedId);
+        if (fullDoc) {
+          onAddInstance(position.x, position.y, fullDoc);
         }
       } else if ('document' in payload) {
         onAddInstance(position.x, position.y, (payload as SavedDocument).document);
