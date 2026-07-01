@@ -16,7 +16,6 @@ import type { CardDesign, CardDocument, EditableObjectId, ObjectLayout, SavedDoc
 interface CanvasStageProps {
   document: CardDocument;
   zoom: number;
-  savedItems: SavedDocument[];
   selectedInstanceIds: string[];
   onCanvasReady: (canvas: Canvas) => void;
   onZoomIn: () => void;
@@ -109,7 +108,6 @@ const createCardFrame = (left: number, top: number, width: number, height: numbe
 export const CanvasStage: React.FC<CanvasStageProps> = ({
   document,
   zoom,
-  savedItems,
   selectedInstanceIds,
   onCanvasReady,
   onZoomIn,

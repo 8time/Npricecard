@@ -957,7 +957,6 @@ const App = () => {
         <CanvasStage
           document={documentForCanvas}
           zoom={zoom}
-          savedItems={state.savedItems}
           selectedInstanceIds={selectedInstanceIds}
           onCanvasReady={handleCanvasReady}
           onZoomIn={() => setZoom((c) => Math.min(MAX_ZOOM, Number((c + ZOOM_STEP).toFixed(2))))}
